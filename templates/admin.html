@@ -1,0 +1,349 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<div class="welcome-card">
+    <div class="card-body">
+        <h1>Admin Panel</h1>
+        <p>Manage the sign detection model and system settings</p>
+    </div>
+</div>
+
+<!-- System Statistics -->
+<div class="custom-card">
+    <div class="card-header">
+        <i class="fas fa-chart-bar me-2"></i>System Statistics
+    </div>
+    <div class="card-body">
+        <button class="btn btn-info mb-3" onclick="loadStats()">
+            <i class="fas fa-sync me-2"></i>Refresh Stats
+        </button>
+        <div id="statsContent">
+            <p class="text-muted">Click "Refresh Stats" to load system statistics.</p>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-6">
+        <div class="custom-card">
+            <div class="card-header">
+                <i class="fas fa-brain me-2"></i>Model Management
+            </div>
+            <div class="card-body">
+                <p>Retrain the sign detection model with new data or download the current model.</p>
+                <button id="retrainBtn" class="btn btn-primary me-2" onclick="retrainModel()">
+                    <i class="fas fa-brain me-2"></i>Retrain Model
+                </button>
+                <a href="{{ url_for('download_model') }}" class="btn btn-secondary">
+                    <i class="fas fa-download me-2"></i>Download Model
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-6">
+        <div class="custom-card">
+            <div class="card-header">
+                <i class="fas fa-chart-line me-2"></i>Retrain Status
+            </div>
+            <div class="card-body">
+                <div id="retrainStatus">
+                    <p class="text-muted">No retrain in progress</p>
+                </div>
+                <button class="btn btn-outline-primary btn-sm" onclick="checkRetrainStatus()">
+                    <i class="fas fa-sync me-2"></i>Refresh Status
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="custom-card">
+    <div class="card-header">
+        <i class="fas fa-users me-2"></i>User Management
+    </div>
+    <div class="card-body">
+        <p>View and manage registered users.</p>
+        <button class="btn btn-info" onclick="loadUsers()">
+            <i class="fas fa-list me-2"></i>View Users
+        </button>
+        <div id="usersList" class="mt-3" style="display: none;">
+            <!-- Users will be loaded here -->
+        </div>
+    </div>
+</div>
+
+<div class="custom-card">
+    <div class="card-header">
+        <i class="fas fa-graduation-cap me-2"></i>Lesson Management
+    </div>
+    <div class="card-body">
+        <p>Manage lesson modules and unlock new content for users.</p>
+        <div class="mb-3">
+            <h5>Lesson 4: Alphabet G-M</h5>
+            <button class="btn btn-success me-2" onclick="unlockLesson(4)">
+                <i class="fas fa-unlock me-2"></i>Unlock Lesson 4
+            </button>
+            <button class="btn btn-warning" onclick="lockLesson(4)">
+                <i class="fas fa-lock me-2"></i>Lock Lesson 4
+            </button>
+        </div>
+        <div class="mb-3">
+            <h5>Lesson 5: Alphabet N-Z</h5>
+            <button class="btn btn-success me-2" onclick="unlockLesson(5)">
+                <i class="fas fa-unlock me-2"></i>Unlock Lesson 5
+            </button>
+            <button class="btn btn-warning" onclick="lockLesson(5)">
+                <i class="fas fa-lock me-2"></i>Lock Lesson 5
+            </button>
+        </div>
+        <div id="lessonStatus" class="mt-3"></div>
+    </div>
+</div>
+
+<script>
+function retrainModel() {
+    if (confirm('Are you sure you want to start retraining the model? This may take some time.')) {
+        fetch('/retrain', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'started') {
+                alert('Model retraining started successfully!');
+                checkRetrainStatus();
+            } else {
+                alert('Error starting retraining: ' + data.error);
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Error starting retraining');
+        });
+    }
+}
+
+function checkRetrainStatus() {
+    fetch('/retrain_status')
+    .then(response => response.json())
+    .then(data => {
+        const statusDiv = document.getElementById('retrainStatus');
+        if (data.running) {
+            statusDiv.innerHTML = `
+                <div class="alert alert-info">
+                    <i class="fas fa-spinner fa-spin me-2"></i>
+                    Retraining in progress...
+                    <div class="mt-2">
+                        <strong>Exit Code:</strong> ${data.last_exit_code !== null ? data.last_exit_code : 'N/A'}<br>
+                        <strong>Log:</strong><br>
+                        <pre class="bg-light p-2 mt-2 small">${data.log || 'No log available'}</pre>
+                    </div>
+                </div>
+            `;
+        } else {
+            statusDiv.innerHTML = `
+                <p class="text-muted">No retrain in progress</p>
+                ${data.last_exit_code !== null ? `<p><strong>Last Exit Code:</strong> ${data.last_exit_code}</p>` : ''}
+                ${data.log ? `<details><summary>View Log</summary><pre class="bg-light p-2 mt-2 small">${data.log}</pre></details>` : ''}
+            `;
+        }
+    })
+    .catch(error => {
+        console.error('Error checking status:', error);
+        document.getElementById('retrainStatus').innerHTML = '<p class="text-danger">Error loading status</p>';
+    });
+}
+
+function loadStats() {
+    const statsDiv = document.getElementById('statsContent');
+    statsDiv.innerHTML = '<p><i class="fas fa-spinner fa-spin"></i> Loading statistics...</p>';
+    
+    fetch('/admin/stats')
+    .then(response => response.json())
+    .then(data => {
+        if (data.error) {
+            statsDiv.innerHTML = '<p class="text-danger">Error: ' + data.error + '</p>';
+            return;
+        }
+        
+        let html = '<div class="row">';
+        html += '<div class="col-md-6 mb-3"><h5>Overview</h5><ul class="list-group">';
+        html += '<li class="list-group-item d-flex justify-content-between align-items-center">Total Users<span class="badge bg-primary rounded-pill">' + data.total_users + '</span></li>';
+        html += '<li class="list-group-item d-flex justify-content-between align-items-center">Total Sign Detections<span class="badge bg-success rounded-pill">' + data.total_sign_detections + '</span></li>';
+        html += '<li class="list-group-item d-flex justify-content-between align-items-center">Total Speech Transcriptions<span class="badge bg-info rounded-pill">' + data.total_speech_transcriptions + '</span></li>';
+        html += '<li class="list-group-item d-flex justify-content-between align-items-center">Total Detections<span class="badge bg-secondary rounded-pill">' + data.total_detections + '</span></li>';
+        html += '</ul></div>';
+        
+        html += '<div class="col-md-6 mb-3"><h5>Today</h5><ul class="list-group">';
+        html += '<li class="list-group-item d-flex justify-content-between align-items-center">Sign Detections<span class="badge bg-success rounded-pill">' + data.today_sign_detections + '</span></li>';
+        html += '<li class="list-group-item d-flex justify-content-between align-items-center">Speech Transcriptions<span class="badge bg-info rounded-pill">' + data.today_speech_transcriptions + '</span></li>';
+        html += '<li class="list-group-item d-flex justify-content-between align-items-center">Total<span class="badge bg-secondary rounded-pill">' + data.today_total + '</span></li>';
+        html += '</ul></div></div>';
+        
+        if (data.top_users && data.top_users.length > 0) {
+            html += '<div class="row"><div class="col-md-6 mb-3"><h5>Most Active Users</h5><ul class="list-group">';
+            data.top_users.forEach(function(user) {
+                html += '<li class="list-group-item d-flex justify-content-between align-items-center">' + user.username + '<span class="badge bg-primary rounded-pill">' + user.count + '</span></li>';
+            });
+            html += '</ul></div>';
+        }
+        
+        if (data.top_signs && data.top_signs.length > 0) {
+            html += '<div class="col-md-6 mb-3"><h5>Most Detected Signs</h5><ul class="list-group">';
+            data.top_signs.forEach(function(sign) {
+                html += '<li class="list-group-item d-flex justify-content-between align-items-center">' + sign.sign + '<span class="badge bg-success rounded-pill">' + sign.count + '</span></li>';
+            });
+            html += '</ul></div></div>';
+        }
+        
+        if (data.leaderboard_xp && data.leaderboard_xp.length > 0) {
+            html += '<div class="row"><div class="col-md-6 mb-3">';
+            html += '<h5><i class="fas fa-trophy text-warning"></i> Top by XP</h5>';
+            html += '<div class="alert alert-success"><i class="fas fa-award"></i> <strong>Most Active User This Month:</strong> ' + data.leaderboard_xp[0].username + ' (Lvl ' + data.leaderboard_xp[0].level + ', ' + data.leaderboard_xp[0].xp + ' XP)</div>';
+            html += '<ul class="list-group">';
+            data.leaderboard_xp.forEach(function(user, i) {
+                html += '<li class="list-group-item d-flex justify-content-between align-items-center">';
+                html += (i+1) + '. ' + user.username + ' <span class="badge bg-warning text-dark">Lvl ' + user.level + ' (' + user.xp + ' XP)</span></li>';
+            });
+            html += '</ul></div>';
+        }
+        
+        if (data.leaderboard_streak && data.leaderboard_streak.length > 0) {
+            html += '<div class="col-md-6 mb-3"><h5><i class="fas fa-fire text-danger"></i> Top by Streak</h5><ul class="list-group">';
+            data.leaderboard_streak.forEach(function(user, i) {
+                html += '<li class="list-group-item d-flex justify-content-between align-items-center">';
+                html += (i+1) + '. ' + user.username + ' <span class="badge bg-danger">' + user.streak + ' days</span></li>';
+            });
+            html += '</ul></div></div>';
+        }
+        
+        statsDiv.innerHTML = html;
+    })
+    .catch(error => {
+        console.error('Error loading stats:', error);
+        statsDiv.innerHTML = '<p class="text-danger">Error loading statistics</p>';
+    });
+}
+
+function loadUsers() {
+    const usersDiv = document.getElementById('usersList');
+    usersDiv.style.display = 'block';
+    usersDiv.innerHTML = '<p><i class="fas fa-spinner fa-spin"></i> Loading users...</p>';
+    
+    fetch('/admin/users')
+    .then(response => response.json())
+    .then(data => {
+        if (data.error) {
+            usersDiv.innerHTML = '<p class="text-danger">Error: ' + data.error + '</p>';
+            return;
+        }
+        
+        if (data.users.length === 0) {
+            usersDiv.innerHTML = '<p class="text-muted">No users found.</p>';
+            return;
+        }
+        
+        let html = '<div class="table-responsive"><table class="table table-striped table-hover">';
+        html += '<thead><tr><th>ID</th><th>Username</th><th>Email</th><th>Level</th><th>XP</th><th>Streak</th><th>Admin</th><th>Preference</th><th>Date Joined</th><th>Sign Det.</th><th>Speech</th><th>Actions</th></tr></thead>';
+        html += '<tbody>';
+        
+        data.users.forEach(function(user) {
+            html += '<tr>';
+            html += '<td>' + user.id + '</td>';
+            html += '<td>' + user.username + '</td>';
+            html += '<td>' + user.email + '</td>';
+            html += '<td><span class="badge bg-info">Lvl ' + user.level + '</span></td>';
+            html += '<td><span class="badge bg-warning text-dark">' + user.xp + ' XP</span></td>';
+            html += '<td><span class="badge bg-danger"><i class="fas fa-fire"></i> ' + user.streak + ' days</span></td>';
+            html += '<td>' + (user.is_admin ? '<span class="badge bg-danger">Yes</span>' : '<span class="badge bg-secondary">No</span>') + '</td>';
+            html += '<td>' + user.preference + '</td>';
+            html += '<td>' + (user.date_joined ? user.date_joined.substring(0, 10) : 'N/A') + '</td>';
+            html += '<td>' + user.sign_detections + '</td>';
+            html += '<td>' + user.speech_transcriptions + '</td>';
+            html += '<td><button class="btn btn-sm btn-danger" onclick="deleteUser(' + user.id + ', \'' + user.username + '\')"><i class="fas fa-trash"></i> Delete</button></td>';
+            html += '</tr>';
+        });
+        
+        html += '</tbody></table></div>';
+        usersDiv.innerHTML = html;
+    })
+    .catch(error => {
+        console.error('Error loading users:', error);
+        usersDiv.innerHTML = '<p class="text-danger">Error loading users</p>';
+    });
+}
+
+function deleteUser(userId, username) {
+    if (!confirm('Are you sure you want to delete user "' + username + '"? This will also delete all their detection history.')) {
+        return;
+    }
+    
+    fetch('/admin/users/' + userId, {
+        method: 'DELETE'
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.error) {
+            alert('Error: ' + data.error);
+            return;
+        }
+        alert(data.message);
+        loadUsers();
+    })
+    .catch(error => {
+        console.error('Error deleting user:', error);
+        alert('Error deleting user');
+    });
+}
+
+// Check status on page load
+document.addEventListener('DOMContentLoaded', function() {
+    checkRetrainStatus();
+});
+
+function unlockLesson(lessonNumber) {
+    if (confirm(`Are you sure you want to unlock Lesson ${lessonNumber}?`)) {
+        fetch(`/admin/unlock_lesson/${lessonNumber}`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'}
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) {
+                alert('Error: ' + data.error);
+            } else {
+                document.getElementById('lessonStatus').innerHTML = '<div class="alert alert-success">' + data.message + '</div>';
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Error unlocking lesson');
+        });
+    }
+}
+
+function lockLesson(lessonNumber) {
+    if (confirm(`Are you sure you want to lock Lesson ${lessonNumber}?`)) {
+        fetch(`/admin/lock_lesson/${lessonNumber}`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'}
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) {
+                alert('Error: ' + data.error);
+            } else {
+                document.getElementById('lessonStatus').innerHTML = '<div class="alert alert-warning">' + data.message + '</div>';
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Error locking lesson');
+        });
+    }
+}
+</script>
+{% endblock %}

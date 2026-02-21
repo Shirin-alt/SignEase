@@ -1,0 +1,396 @@
+{% extends "layout.html" %}
+{% block content %}
+<div class="welcome-card">
+    <h1>🎓 Learn Sign Language</h1>
+    <p>Complete lessons and quizzes to earn XP and master sign language!</p>
+</div>
+
+<div class="lessons-grid">
+    <div class="lesson-card" data-lesson="1">
+        <div class="lesson-icon">
+            <i class="fas fa-hand-paper"></i>
+        </div>
+        <h3>Lesson 1: Basic Greetings</h3>
+        <p>Learn: Hello, Thanks, Yes, No</p>
+        <div class="lesson-reward">🏆 +50 XP</div>
+        <button class="btn btn-primary" onclick="startLesson(1)">Start Lesson</button>
+    </div>
+
+    <div class="lesson-card" data-lesson="2">
+        <div class="lesson-icon">
+            <i class="fas fa-heart"></i>
+        </div>
+        <h3>Lesson 2: Emotions</h3>
+        <p>Learn: I Love You, Happy, Sad</p>
+        <div class="lesson-reward">🏆 +50 XP</div>
+        <button class="btn btn-primary" onclick="startLesson(2)">Start Lesson</button>
+    </div>
+
+    <div class="lesson-card" data-lesson="3">
+        <div class="lesson-icon">
+            <i class="fas fa-font"></i>
+        </div>
+        <h3>Lesson 3: Alphabet A-F</h3>
+        <p>Learn: Letters A through F</p>
+        <div class="lesson-reward">🏆 +100 XP</div>
+        <button class="btn btn-primary" onclick="startLesson(3)">Start Lesson</button>
+    </div>
+
+    <div class="lesson-card{% if not (unlocked_lessons and unlocked_lessons.get(4)) %} locked{% endif %}" data-lesson="4">
+        <div class="lesson-icon">
+            <i class="fas {% if unlocked_lessons and unlocked_lessons.get(4) %}fa-font{% else %}fa-lock{% endif %}"></i>
+        </div>
+        <h3>Lesson 4: Alphabet G-M</h3>
+        <p>Learn: Letters G through M</p>
+        <div class="lesson-reward">🏆 +100 XP</div>
+        {% if unlocked_lessons and unlocked_lessons.get(4) %}
+        <button class="btn btn-primary" onclick="startLesson(4)">Start Lesson</button>
+        {% else %}
+        <button class="btn btn-secondary" disabled>🔒 Coming Soon</button>
+        {% endif %}
+    </div>
+
+    <div class="lesson-card{% if not (unlocked_lessons and unlocked_lessons.get(5)) %} locked{% endif %}" data-lesson="5">
+        <div class="lesson-icon">
+            <i class="fas {% if unlocked_lessons and unlocked_lessons.get(5) %}fa-font{% else %}fa-lock{% endif %}"></i>
+        </div>
+        <h3>Lesson 5: Alphabet N-Z</h3>
+        <p>Learn: Letters N through Z</p>
+        <div class="lesson-reward">🏆 +100 XP</div>
+        {% if unlocked_lessons and unlocked_lessons.get(5) %}
+        <button class="btn btn-primary" onclick="startLesson(5)">Start Lesson</button>
+        {% else %}
+        <button class="btn btn-secondary" disabled>🔒 Coming Soon</button>
+        {% endif %}
+    </div>
+</div>
+
+<div id="lessonModal" class="lesson-modal" style="display: none;">
+    <div class="lesson-modal-content">
+        <span class="close-modal" onclick="closeLesson()">&times;</span>
+        <div id="lessonContent"></div>
+    </div>
+</div>
+
+<style>
+.lesson-card.locked {
+    opacity: 0.6;
+    position: relative;
+}
+
+.lesson-card.locked::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.1);
+    border-radius: 12px;
+    pointer-events: none;
+}
+
+.lesson-card.locked .lesson-icon {
+    color: #6c757d;
+}
+
+.lessons-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 1.5rem;
+    margin-top: 2rem;
+}
+
+.lesson-card {
+    background: var(--card-bg);
+    border-radius: 12px;
+    padding: 1.5rem;
+    text-align: center;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    transition: transform 0.3s;
+}
+
+.lesson-card:hover {
+    transform: translateY(-5px);
+}
+
+.lesson-icon {
+    font-size: 3rem;
+    color: #0052cc;
+    margin-bottom: 1rem;
+}
+
+.lesson-reward {
+    color: #f39c12;
+    font-weight: 600;
+    margin: 1rem 0;
+}
+
+.lesson-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0,0,0,0.8);
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.lesson-modal-content {
+    background: var(--card-bg);
+    border-radius: 12px;
+    padding: 2rem;
+    max-width: 600px;
+    width: 90%;
+    max-height: 80vh;
+    overflow-y: auto;
+    position: relative;
+}
+
+.close-modal {
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+    font-size: 2rem;
+    cursor: pointer;
+    color: var(--text-gray);
+}
+
+.quiz-option {
+    background: var(--bg-color);
+    border: 2px solid var(--border-color);
+    border-radius: 8px;
+    padding: 1rem;
+    margin: 0.5rem 0;
+    cursor: pointer;
+    transition: all 0.3s;
+    display: inline-block;
+    width: 180px;
+    margin: 0.5rem;
+}
+
+.quiz-option:hover {
+    border-color: #0052cc;
+    transform: scale(1.05);
+}
+
+.quiz-option.correct {
+    border-color: #27ae60;
+    background: rgba(39, 174, 96, 0.1);
+}
+
+.quiz-option.wrong {
+    border-color: #e74c3c;
+    background: rgba(231, 76, 60, 0.1);
+}
+
+.quiz-options-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1rem;
+    margin: 2rem 0;
+}
+</style>
+
+<script>
+const lessons = {
+    1: {
+        title: 'Basic Greetings',
+        content: [
+            { sign: 'hello', description: 'Wave your hand side to side', image: '/static/images/hello.jpg' },
+            { sign: 'thanks', description: 'Touch fingers to chin, move forward', image: '/static/images/thankyou.jpg' },
+            { sign: 'yes', description: 'Make a fist and nod it up and down', image: '/static/images/yes.jpg' },
+            { sign: 'no', description: 'Extend index and middle finger, close them', image: '/static/images/no.jpg' }
+        ],
+        quiz: [
+            { question: 'Which sign means "Hello"?', options: [{sign: 'hello', image: '/static/images/hello.jpg'}, {sign: 'thanks', image: '/static/images/thankyou.jpg'}, {sign: 'yes', image: '/static/images/yes.jpg'}, {sign: 'no', image: '/static/images/no.jpg'}], answer: 'hello' },
+            { question: 'Which sign means "Thanks"?', options: [{sign: 'thanks', image: '/static/images/thankyou.jpg'}, {sign: 'hello', image: '/static/images/hello.jpg'}, {sign: 'yes', image: '/static/images/yes.jpg'}, {sign: 'no', image: '/static/images/no.jpg'}], answer: 'thanks' },
+            { question: 'Which sign means "Yes"?', options: [{sign: 'yes', image: '/static/images/yes.jpg'}, {sign: 'no', image: '/static/images/no.jpg'}, {sign: 'hello', image: '/static/images/hello.jpg'}, {sign: 'thanks', image: '/static/images/thankyou.jpg'}], answer: 'yes' },
+            { question: 'Which sign means "No"?', options: [{sign: 'no', image: '/static/images/no.jpg'}, {sign: 'yes', image: '/static/images/yes.jpg'}, {sign: 'thanks', image: '/static/images/thankyou.jpg'}, {sign: 'hello', image: '/static/images/hello.jpg'}], answer: 'no' },
+            { question: 'How do you sign "Hello"?', options: [{sign: 'hello', image: '/static/images/hello.jpg'}, {sign: 'thanks', image: '/static/images/thankyou.jpg'}, {sign: 'yes', image: '/static/images/yes.jpg'}, {sign: 'no', image: '/static/images/no.jpg'}], answer: 'hello' }
+        ],
+        xp: 50
+    },
+    2: {
+        title: 'Emotions',
+        content: [
+            { sign: 'iloveyou', description: 'Extend thumb, index, and pinky', image: '/static/images/iloveyou.jpg' },
+            { sign: 'yes', description: 'Make a fist and nod it up and down', image: '/static/images/yes.jpg' },
+            { sign: 'no', description: 'Extend index and middle finger, close them', image: '/static/images/no.jpg' }
+        ],
+        quiz: [
+            { question: 'Which sign means "I Love You"?', options: [{sign: 'iloveyou', image: '/static/images/iloveyou.jpg'}, {sign: 'hello', image: '/static/images/hello.jpg'}, {sign: 'thanks', image: '/static/images/thankyou.jpg'}, {sign: 'yes', image: '/static/images/yes.jpg'}], answer: 'iloveyou' },
+            { question: 'Which sign means "Yes"?', options: [{sign: 'yes', image: '/static/images/yes.jpg'}, {sign: 'no', image: '/static/images/no.jpg'}, {sign: 'iloveyou', image: '/static/images/iloveyou.jpg'}, {sign: 'hello', image: '/static/images/hello.jpg'}], answer: 'yes' },
+            { question: 'Which sign means "No"?', options: [{sign: 'no', image: '/static/images/no.jpg'}, {sign: 'yes', image: '/static/images/yes.jpg'}, {sign: 'iloveyou', image: '/static/images/iloveyou.jpg'}, {sign: 'thanks', image: '/static/images/thankyou.jpg'}], answer: 'no' },
+            { question: 'How do you express love in sign language?', options: [{sign: 'iloveyou', image: '/static/images/iloveyou.jpg'}, {sign: 'yes', image: '/static/images/yes.jpg'}, {sign: 'hello', image: '/static/images/hello.jpg'}, {sign: 'thanks', image: '/static/images/thankyou.jpg'}], answer: 'iloveyou' },
+            { question: 'Which gesture shows agreement?', options: [{sign: 'yes', image: '/static/images/yes.jpg'}, {sign: 'no', image: '/static/images/no.jpg'}, {sign: 'hello', image: '/static/images/hello.jpg'}, {sign: 'iloveyou', image: '/static/images/iloveyou.jpg'}], answer: 'yes' }
+        ],
+        xp: 50
+    },
+    3: {
+        title: 'Alphabet A-F',
+        content: [
+            { sign: 'a', description: 'Closed fist with thumb on side', image: '/static/images/a.jpeg' },
+            { sign: 'b', description: 'Flat hand, fingers together pointing up', image: '/static/images/b.jpeg' },
+            { sign: 'c', description: 'Curved hand like letter C', image: '/static/images/c.jpeg' },
+            { sign: 'd', description: 'Index finger up, other fingers touch thumb', image: '/static/images/d.jpeg' },
+            { sign: 'e', description: 'Fingers curled, thumb across', image: '/static/images/e.jpeg' },
+            { sign: 'f', description: 'OK sign with thumb and index', image: '/static/images/f.jpeg' }
+        ],
+        quiz: [
+            { question: 'Which is the sign for letter "A"?', options: [{sign: 'a', image: '/static/images/a.jpeg'}, {sign: 'b', image: '/static/images/b.jpeg'}, {sign: 'c', image: '/static/images/c.jpeg'}, {sign: 'd', image: '/static/images/d.jpeg'}], answer: 'a' },
+            { question: 'Which is the sign for letter "B"?', options: [{sign: 'b', image: '/static/images/b.jpeg'}, {sign: 'a', image: '/static/images/a.jpeg'}, {sign: 'c', image: '/static/images/c.jpeg'}, {sign: 'f', image: '/static/images/f.jpeg'}], answer: 'b' },
+            { question: 'Which is the sign for letter "C"?', options: [{sign: 'c', image: '/static/images/c.jpeg'}, {sign: 'a', image: '/static/images/a.jpeg'}, {sign: 'b', image: '/static/images/b.jpeg'}, {sign: 'd', image: '/static/images/d.jpeg'}], answer: 'c' },
+            { question: 'Which is the sign for letter "D"?', options: [{sign: 'd', image: '/static/images/d.jpeg'}, {sign: 'c', image: '/static/images/c.jpeg'}, {sign: 'f', image: '/static/images/f.jpeg'}, {sign: 'a', image: '/static/images/a.jpeg'}], answer: 'd' },
+            { question: 'Which is the sign for letter "F"?', options: [{sign: 'f', image: '/static/images/f.jpeg'}, {sign: 'b', image: '/static/images/b.jpeg'}, {sign: 'c', image: '/static/images/c.jpeg'}, {sign: 'd', image: '/static/images/d.jpeg'}], answer: 'f' }
+        ],
+        xp: 100
+    },
+    4: {
+        title: 'Alphabet G-M',
+        content: [
+            { sign: 'g', description: 'Point index finger and thumb sideways', image: '/static/images/g.jpeg' },
+            { sign: 'h', description: 'Two fingers extended sideways', image: '/static/images/h.jpeg' },
+            { sign: 'i', description: 'Pinky finger extended', image: '/static/images/i.jpeg' },
+            { sign: 'j', description: 'Pinky finger draws J shape', image: '/static/images/j.jpeg' },
+            { sign: 'k', description: 'Index and middle up, thumb between', image: '/static/images/k.jpeg' },
+            { sign: 'l', description: 'L shape with thumb and index', image: '/static/images/l.jpeg' },
+            { sign: 'm', description: 'Three fingers over thumb', image: '/static/images/m.jpeg' }
+        ],
+        quiz: [
+            { question: 'Which is the sign for letter "G"?', options: [{sign: 'g', image: '/static/images/g.jpeg'}, {sign: 'h', image: '/static/images/h.jpeg'}, {sign: 'i', image: '/static/images/i.jpeg'}, {sign: 'l', image: '/static/images/l.jpeg'}], answer: 'g' },
+            { question: 'Which is the sign for letter "H"?', options: [{sign: 'h', image: '/static/images/h.jpeg'}, {sign: 'g', image: '/static/images/g.jpeg'}, {sign: 'k', image: '/static/images/k.jpeg'}, {sign: 'm', image: '/static/images/m.jpeg'}], answer: 'h' },
+            { question: 'Which is the sign for letter "I"?', options: [{sign: 'i', image: '/static/images/i.jpeg'}, {sign: 'j', image: '/static/images/j.jpeg'}, {sign: 'l', image: '/static/images/l.jpeg'}, {sign: 'h', image: '/static/images/h.jpeg'}], answer: 'i' },
+            { question: 'Which is the sign for letter "L"?', options: [{sign: 'l', image: '/static/images/l.jpeg'}, {sign: 'i', image: '/static/images/i.jpeg'}, {sign: 'k', image: '/static/images/k.jpeg'}, {sign: 'm', image: '/static/images/m.jpeg'}], answer: 'l' },
+            { question: 'Which is the sign for letter "M"?', options: [{sign: 'm', image: '/static/images/m.jpeg'}, {sign: 'h', image: '/static/images/h.jpeg'}, {sign: 'g', image: '/static/images/g.jpeg'}, {sign: 'l', image: '/static/images/l.jpeg'}], answer: 'm' }
+        ],
+        xp: 100
+    },
+    5: {
+        title: 'Alphabet N-Z',
+        content: [
+            { sign: 'n', description: 'Two fingers over thumb', image: '/static/images/n.jpeg' },
+            { sign: 'o', description: 'Fingers and thumb form O shape', image: '/static/images/o.jpeg' },
+            { sign: 'p', description: 'Like K but pointing down', image: '/static/images/p.jpeg' },
+            { sign: 'r', description: 'Cross index and middle fingers', image: '/static/images/r.jpeg' },
+            { sign: 's', description: 'Fist with thumb across fingers', image: '/static/images/s.jpeg' },
+            { sign: 't', description: 'Thumb between index and middle', image: '/static/images/t.jpeg' },
+            { sign: 'u', description: 'Index and middle fingers together up', image: '/static/images/u.jpeg' },
+            { sign: 'v', description: 'Index and middle fingers apart up', image: '/static/images/v.jpeg' },
+            { sign: 'w', description: 'Three fingers up together', image: '/static/images/w.jpeg' },
+            { sign: 'x', description: 'Index finger bent like hook', image: '/static/images/x.jpeg' },
+            { sign: 'y', description: 'Thumb and pinky extended', image: '/static/images/y.jpeg' },
+            { sign: 'z', description: 'Draw Z shape with index finger', image: '/static/images/z.jpeg' }
+        ],
+        quiz: [
+            { question: 'Which is the sign for letter "N"?', options: [{sign: 'n', image: '/static/images/n.jpeg'}, {sign: 'o', image: '/static/images/o.jpeg'}, {sign: 'p', image: '/static/images/p.jpeg'}, {sign: 'r', image: '/static/images/r.jpeg'}], answer: 'n' },
+            { question: 'Which is the sign for letter "O"?', options: [{sign: 'o', image: '/static/images/o.jpeg'}, {sign: 'n', image: '/static/images/n.jpeg'}, {sign: 's', image: '/static/images/s.jpeg'}, {sign: 't', image: '/static/images/t.jpeg'}], answer: 'o' },
+            { question: 'Which is the sign for letter "R"?', options: [{sign: 'r', image: '/static/images/r.jpeg'}, {sign: 'p', image: '/static/images/p.jpeg'}, {sign: 'u', image: '/static/images/u.jpeg'}, {sign: 'v', image: '/static/images/v.jpeg'}], answer: 'r' },
+            { question: 'Which is the sign for letter "Y"?', options: [{sign: 'y', image: '/static/images/y.jpeg'}, {sign: 'w', image: '/static/images/w.jpeg'}, {sign: 'x', image: '/static/images/x.jpeg'}, {sign: 'z', image: '/static/images/z.jpeg'}], answer: 'y' },
+            { question: 'Which is the sign for letter "Z"?', options: [{sign: 'z', image: '/static/images/z.jpeg'}, {sign: 'y', image: '/static/images/y.jpeg'}, {sign: 'v', image: '/static/images/v.jpeg'}, {sign: 'w', image: '/static/images/w.jpeg'}], answer: 'z' }
+        ],
+        xp: 100
+    }
+};
+
+let currentLesson = null;
+let currentQuizIndex = 0;
+
+function startLesson(lessonId) {
+    currentLesson = lessons[lessonId];
+    currentQuizIndex = 0;
+    
+    let html = `<h2 style="color: var(--text-color);">${currentLesson.title}</h2>`;
+    html += '<div style="margin: 2rem 0;">';
+    
+    currentLesson.content.forEach(item => {
+        html += `
+            <div style="margin: 1.5rem auto; padding: 2rem; background: linear-gradient(145deg, #ffffff, #f0f3f7); border-radius: 20px; text-align: center; max-width: 400px; box-shadow: 0 8px 24px rgba(0,0,0,0.1), inset 0 1px 0 rgba(255,255,255,0.8); transition: transform 0.3s ease;" onmouseover="this.style.transform='translateY(-5px)'" onmouseout="this.style.transform='translateY(0)'">
+                <div style="background: linear-gradient(135deg, #0052cc, #4a90e2); padding: 1rem; border-radius: 16px; margin-bottom: 1.5rem; box-shadow: 0 6px 16px rgba(0,82,204,0.3);">
+                    <img src="${item.image}" alt="${item.sign}" style="width: 100%; max-width: 280px; height: 280px; object-fit: cover; border-radius: 12px; border: 4px solid white; box-shadow: 0 4px 12px rgba(0,0,0,0.2);" onerror="this.style.display='none'">
+                </div>
+                <h4 style="color: #0052cc; text-transform: uppercase; font-weight: 800; font-size: 1.5rem; margin: 1rem 0 0.5rem; letter-spacing: 1px;">${item.sign}</h4>
+                <p style="color: var(--text-gray); font-size: 1rem; line-height: 1.6;">${item.description}</p>
+            </div>
+        `;
+    });
+    
+    html += '</div>';
+    html += '<button class="btn btn-primary btn-lg" onclick="startQuiz()">Take Quiz</button>';
+    
+    document.getElementById('lessonContent').innerHTML = html;
+    document.getElementById('lessonModal').style.display = 'flex';
+}
+
+function startQuiz() {
+    showQuizQuestion();
+}
+
+function showQuizQuestion() {
+    if (currentQuizIndex >= currentLesson.quiz.length) {
+        completeLesson();
+        return;
+    }
+    
+    const q = currentLesson.quiz[currentQuizIndex];
+    let html = `<h3 style="color: var(--text-color);">Question ${currentQuizIndex + 1}/${currentLesson.quiz.length}</h3>`;
+    html += `<p style="font-size: 1.2rem; margin: 1.5rem 0; color: var(--text-color);">${q.question}</p>`;
+    html += '<div class="quiz-options-grid">';
+    
+    q.options.forEach(opt => {
+        html += `<div class="quiz-option" onclick="checkAnswer('${opt.sign}', '${q.answer}')" data-sign="${opt.sign}" style="cursor: pointer; transition: all 0.3s ease;">
+            <div style="background: linear-gradient(145deg, #ffffff, #f0f3f7); padding: 1rem; border-radius: 16px; box-shadow: 0 4px 12px rgba(0,0,0,0.1), inset 0 1px 0 rgba(255,255,255,0.8);">
+                <img src="${opt.image}" alt="${opt.sign}" style="width: 100%; height: 150px; object-fit: cover; border-radius: 12px; margin-bottom: 0.75rem; border: 3px solid #e1e4e8;" onerror="this.style.display='none'">
+                <p style="color: var(--text-color); font-weight: 700; text-transform: uppercase; font-size: 1.1rem; margin: 0;">${opt.sign}</p>
+            </div>
+        </div>`;
+    });
+    
+    html += '</div>';
+    document.getElementById('lessonContent').innerHTML = html;
+}
+
+function checkAnswer(selected, correct) {
+    const options = document.querySelectorAll('.quiz-option');
+    options.forEach(opt => {
+        opt.style.pointerEvents = 'none';
+        const sign = opt.getAttribute('data-sign');
+        
+        if (sign === correct) {
+            opt.classList.add('correct');
+        } else if (sign === selected && selected !== correct) {
+            opt.classList.add('wrong');
+        }
+    });
+    
+    setTimeout(() => {
+        currentQuizIndex++;
+        showQuizQuestion();
+    }, 1500);
+}
+
+function completeLesson() {
+    window.Gamification.addXP(currentLesson.xp);
+    
+    let html = `
+        <div style="text-align: center;">
+            <div style="font-size: 5rem; margin: 1rem 0;">🎉</div>
+            <h2 style="color: var(--text-color);">Lesson Complete!</h2>
+            <p style="font-size: 1.5rem; color: #f39c12; margin: 1rem 0;">+${currentLesson.xp} XP</p>
+            <button class="btn btn-primary btn-lg" onclick="closeLesson()">Continue Learning</button>
+        </div>
+    `;
+    
+    document.getElementById('lessonContent').innerHTML = html;
+}
+
+function closeLesson() {
+    document.getElementById('lessonModal').style.display = 'none';
+    currentLesson = null;
+}
+</script>
+
+{% endblock %}

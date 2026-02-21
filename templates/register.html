@@ -1,0 +1,76 @@
+{% extends "auth_layout.html" %}
+
+{% block title %}Register - Signease{% endblock %}
+
+{% block auth_content %}
+<div class="auth-form-header">
+    <h2>Join Signease</h2>
+    <p>Create your account to start learning</p>
+</div>
+
+<form method="POST">
+    {{ form.hidden_tag() }}
+
+    <div class="mb-3">
+        <label for="username" class="form-label">Username</label>
+        <div class="input-group">
+            <span class="input-group-text"><i class="fas fa-user"></i></span>
+            {{ form.username(class="form-control", placeholder="Choose a username") }}
+        </div>
+    </div>
+
+    <div class="mb-3">
+        <label for="email" class="form-label">Email</label>
+        <div class="input-group">
+            <span class="input-group-text"><i class="fas fa-envelope"></i></span>
+            {{ form.email(class="form-control", placeholder="Enter your email") }}
+        </div>
+    </div>
+
+    <div class="mb-3">
+        <label for="password" class="form-label">Password</label>
+        <div class="input-group">
+            <span class="input-group-text"><i class="fas fa-lock"></i></span>
+            {{ form.password(class="form-control", placeholder="Create a password") }}
+        </div>
+        <div class="password-requirements">Must be at least 8 characters</div>
+    </div>
+
+    <div class="mb-3">
+        <label for="confirm_password" class="form-label">Confirm Password</label>
+        <div class="input-group">
+            <span class="input-group-text"><i class="fas fa-lock"></i></span>
+            {{ form.confirm_password(class="form-control", placeholder="Confirm your password") }}
+        </div>
+    </div>
+
+    <button type="submit" class="btn btn-auth">
+        <i class="fas fa-user-plus me-2"></i>Create Account
+    </button>
+</form>
+
+<div class="auth-form-footer">
+    <p>Already have an account? <a href="{{ url_for('login') }}">Sign in here</a></p>
+</div>
+{% endblock %}
+
+{% block auth_info %}
+<div class="auth-info-content">
+    <h3>Start Your Journey</h3>
+    <div class="feature-item">
+        <i class="fas fa-rocket"></i>
+        <h4>Quick Setup</h4>
+        <p>Get started in minutes with our easy registration</p>
+    </div>
+    <div class="feature-item">
+        <i class="fas fa-shield-alt"></i>
+        <h4>Secure & Private</h4>
+        <p>Your data is protected with industry-standard security</p>
+    </div>
+    <div class="feature-item">
+        <i class="fas fa-star"></i>
+        <h4>Free Forever</h4>
+        <p>Access all features without any subscription fees</p>
+    </div>
+</div>
+{% endblock %}

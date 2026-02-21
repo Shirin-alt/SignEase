@@ -1,0 +1,64 @@
+{% extends "auth_layout.html" %}
+
+{% block title %}Login - Signease{% endblock %}
+
+{% block auth_content %}
+<div class="auth-form-header">
+    <h2>Welcome Back!</h2>
+    <p>Sign in to continue your learning journey</p>
+</div>
+
+<form method="POST">
+    {{ form.hidden_tag() }}
+
+    <div class="mb-3">
+        <label for="username" class="form-label">Username</label>
+        <div class="input-group">
+            <span class="input-group-text"><i class="fas fa-user"></i></span>
+            {{ form.username(class="form-control", placeholder="Enter your username") }}
+        </div>
+    </div>
+
+    <div class="mb-3">
+        <label for="password" class="form-label">Password</label>
+        <div class="input-group">
+            <span class="input-group-text"><i class="fas fa-lock"></i></span>
+            {{ form.password(class="form-control", placeholder="Enter your password") }}
+        </div>
+    </div>
+
+    <div class="form-check mb-3">
+        {{ form.remember(class="form-check-input") }}
+        {{ form.remember.label(class="form-check-label") }}
+    </div>
+
+    <button type="submit" class="btn btn-auth">
+        <i class="fas fa-sign-in-alt me-2"></i>Sign In
+    </button>
+</form>
+
+<div class="auth-form-footer">
+    <p>Don't have an account? <a href="{{ url_for('register') }}">Create one here</a></p>
+</div>
+{% endblock %}
+
+{% block auth_info %}
+<div class="auth-info-content">
+    <h3>Learn Sign Language</h3>
+    <div class="feature-item">
+        <i class="fas fa-video"></i>
+        <h4>Real-time Detection</h4>
+        <p>Practice with live camera feedback and instant recognition</p>
+    </div>
+    <div class="feature-item">
+        <i class="fas fa-chart-line"></i>
+        <h4>Track Progress</h4>
+        <p>Monitor your learning with detailed analytics and stats</p>
+    </div>
+    <div class="feature-item">
+        <i class="fas fa-trophy"></i>
+        <h4>Earn Rewards</h4>
+        <p>Unlock achievements and level up as you learn</p>
+    </div>
+</div>
+{% endblock %}

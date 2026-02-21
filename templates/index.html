@@ -1,0 +1,67 @@
+{% extends "layout.html" %}
+{% block content %}
+
+<!-- Sign Detection Mode -->
+<div id="signMode" class="mode-content">
+    <div class="camera-section" style="display: flex; gap: 1.5rem; align-items: flex-start;">
+        <div class="camera-container" style="flex: 0 0 70%;">
+            <div class="camera-frame">
+                <img id="video-feed" src="{{ url_for('video_feed') }}" alt="Camera Feed">
+                <div class="detection-overlay">
+                    <div class="detection-label" id="detectionLabel">
+                        <span class="sign-name">Waiting...</span>
+                        <span class="confidence">0%</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="transcript-panel" style="flex: 1; background: var(--card-bg); border-radius: 12px; padding: 1.5rem; box-shadow: 0 2px 8px rgba(0,0,0,0.1); max-height: 500px; display: flex; flex-direction: column;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                <h5 style="color: var(--text-color); margin: 0; display: flex; align-items: center; gap: 0.5rem;">
+                    <i class="fas fa-list"></i> Transcript
+                </h5>
+                <button onclick="clearTranscript()" class="btn btn-sm btn-danger" style="padding: 0.25rem 0.75rem;">
+                    <i class="fas fa-trash"></i> Clear All
+                </button>
+            </div>
+            <div id="transcriptList" style="color: var(--text-color); overflow-y: auto; flex: 1;">
+                <p style="color: var(--text-gray); font-style: italic;">Detected signs will appear here...</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Speech to Text Mode -->
+<div id="speechMode" class="mode-content" style="display: none;">
+    <div class="speech-section">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Speech to Text Recognition</h5>
+            </div>
+            <div class="card-body">
+                <div class="speech-controls">
+                    <button id="speech-toggle" class="btn btn-primary btn-lg">
+                        <i class="fas fa-microphone"></i> Start Recording
+                    </button>
+                </div>
+                <div id="speech-text" class="speech-text">
+                    Click "Start Recording" to begin speech recognition...
+                </div>
+            </div>
+        </div>
+        
+        <div class="card mt-4">
+            <div class="card-header">
+                <h5 class="mb-0">Latest Transcription</h5>
+            </div>
+            <div class="card-body text-center">
+                <div id="latest-transcription">
+                    <i class="fas fa-comment-dots fa-3x text-muted"></i>
+                    <p>Waiting for speech...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock content %}

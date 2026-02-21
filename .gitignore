@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+*.pyo
+*.db
+.venv/
+venv/
+.env
+sign_classifier.p
+*.log
+instance/
+migrations/
+data/
+test.wav
+...
