@@ -1,4 +1,4 @@
-from flask import Flask, render_template, Response, jsonify, redirect, url_for, flash, request, send_file
+from flask import Flask, render_template, Response, jsonify, redirect, url_for, flash, request, send_file, session
 from flask_login import LoginManager, UserMixin, login_user, logout_user, current_user, login_required
 from flask_wtf import FlaskForm
 from wtforms import StringField, PasswordField, BooleanField, SubmitField
@@ -6,6 +6,7 @@ from wtforms.validators import DataRequired, Length, EqualTo, ValidationError
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
+from authlib.integrations.flask_client import OAuth
 import threading
 import subprocess
 import os
@@ -17,6 +18,7 @@ import warnings
 # Suppress SQLAlchemy 2.0 deprecation warnings (LegacyAPIWarning)
 warnings.filterwarnings('ignore', category=DeprecationWarning, module='sqlalchemy')
 warnings.filterwarnings('ignore', message='.*LegacyAPIWarning.*')
+warnings.filterwarnings('ignore', category=DeprecationWarning, module='authlib')
 
 # Import your Detector class
 from detect_signs import Detector
@@ -32,12 +34,26 @@ app.config['SECRET_KEY'] = 'a_very_secret_key_that_is_long_and_random'
 app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', 'mysql+pymysql://root:@localhost/sign_language_db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
+# Google OAuth Configuration
+app.config['GOOGLE_CLIENT_ID'] = os.environ.get('GOOGLE_CLIENT_ID')
+app.config['GOOGLE_CLIENT_SECRET'] = os.environ.get('GOOGLE_CLIENT_SECRET')
+
 # --- Initialize Extensions ---
 db = SQLAlchemy(app)
 migrate = Migrate(app, db)
 login_manager = LoginManager(app)
 login_manager.login_view = 'login'
 login_manager.login_message_category = 'info'
+
+# OAuth Setup
+oauth = OAuth(app)
+google = oauth.register(
+    name='google',
+    client_id=app.config['GOOGLE_CLIENT_ID'],
+    client_secret=app.config['GOOGLE_CLIENT_SECRET'],
+    server_metadata_url='https://accounts.google.com/.well-known/openid-configuration',
+    client_kwargs={'scope': 'openid email profile'}
+)
 
 # database tables
 with app.app_context():
@@ -439,6 +455,52 @@ def login():
 def logout():
     logout_user()
     return redirect(url_for('login'))
+
+@app.route('/login/google')
+def google_login():
+    redirect_uri = url_for('google_callback', _external=True)
+    return google.authorize_redirect(redirect_uri)
+
+@app.route('/login/google/callback')
+def google_callback():
+    try:
+        token = google.authorize_access_token()
+        user_info = token.get('userinfo')
+        
+        if user_info:
+            email = user_info.get('email')
+            name = user_info.get('name')
+            
+            # Check if user exists
+            user = User.query.filter_by(email=email).first()
+            
+            if not user:
+                # Create new user
+                username = email.split('@')[0]
+                # Make username unique if exists
+                base_username = username
+                counter = 1
+                while User.query.filter_by(username=username).first():
+                    username = f"{base_username}{counter}"
+                    counter += 1
+                
+                user = User(username=username, email=email)
+                user.password = generate_password_hash(os.urandom(24).hex())  # Random password
+                db.session.add(user)
+                db.session.commit()
+                flash(f'Welcome {name}! Your account has been created.', 'success')
+            else:
+                flash(f'Welcome back, {user.username}!', 'success')
+            
+            login_user(user, remember=True)
+            return redirect(url_for('index'))
+        else:
+            flash('Failed to get user information from Google.', 'danger')
+            return redirect(url_for('login'))
+    except Exception as e:
+        print(f"Google OAuth error: {e}")
+        flash('An error occurred during Google sign-in. Please try again.', 'danger')
+        return redirect(url_for('login'))
 
 @app.route('/learn')
 @login_required
