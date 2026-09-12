@@ -11,4 +11,18 @@ instance/
 migrations/
 data/
 test.wav
-...
+
+# Node/Vue
+node_modules/
+dist/
+
+# Temporary/debug files
+tmp.txt
+_check.py
+diagnose.py
+
+# Generated files
+graphs/
+
+# Backup files
+requirements_backup.txt

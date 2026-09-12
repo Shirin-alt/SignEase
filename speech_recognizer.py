@@ -22,18 +22,6 @@ class WhisperSpeechRecognizer:
         self.model = None
         self._lock = threading.Lock()
         self._load_model()
-        
-        # Common Tagalog words for language detection
-        self.tagalog_words = {
-            'ang', 'sa', 'ng', 'kayo', 'kami', 'tayo', 'sila', 'ako', 'ikaw', 'siya',
-            'ito', 'yan', 'yun', 'dito', 'doon', 'dyan', 'nito', 'noon', 'nyan',
-            'ano', 'sino', 'saan', 'kailan', 'bakit', 'paano', 'ilang',
-            'mabuti', 'masama', 'malaki', 'maliit', 'mainit', 'malamig',
-            'umiibik', 'kumakain', 'natutulog', 'naglalaro', 'nagsasalita',
-            'oo', 'hindi', 'ayaw', 'gusto', 'dapat', 'maaari', 'pwede',
-            'salamat', 'merong', 'walang', 'may', 'wala', 'puro', 'lahat',
-            'isa', 'dalawa', 'tatlo', 'apat', 'lima', 'anim', 'pito', 'walo', 'siyam', 'sampu'
-        }
 
     def _load_model(self):
         """Load the Whisper model"""
@@ -73,11 +61,11 @@ class WhisperSpeechRecognizer:
         
         return result.strip()
 
-    def transcribe_audio(self, audio_data, language=None):
+    def transcribe_audio(self, audio_data, language='en'):
         """
-        Transcribe audio data to text - English and Tagalog only for better accuracy
+        Transcribe audio data to text
         audio_data: bytes or numpy array
-        language: 'en' for English, 'tl' for Tagalog, or None for auto-detect between these two
+        language: 'en' for English, 'tl' for Tagalog
         Returns: dict with text, language, and confidence
         """
         if self.model is None:
@@ -92,72 +80,36 @@ class WhisperSpeechRecognizer:
                     return {"text": "", "error": "Failed to process audio"}
                 
                 try:
-                    # If no language specified, try both English and Tagalog and pick the most confident
-                    if language is None:
-                        print("[Whisper] Transcribing with English...")
-                        # Try English first
-                        en_result = self.model.transcribe(
+                    print(f"[Whisper] Transcribing with {language}...")
+                    # Use better settings for Tagalog
+                    if language == 'tl':
+                        transcription_result = self.model.transcribe(
                             audio_path,
-                            language='en',
+                            language=language,
                             fp16=False,
-                            temperature=0.0,
-                            best_of=5,
-                            beam_size=5
+                            temperature=0.2,  # Higher temperature = less sensitive
+                            beam_size=1,
+                            best_of=1,
+                            condition_on_previous_text=False,  # Don't use context
+                            compression_ratio_threshold=2.4,  # More lenient
+                            logprob_threshold=-1.0  # Less strict
                         )
-                        
-                        print("[Whisper] Transcribing with Tagalog...")
-                        # Try Tagalog
-                        tl_result = self.model.transcribe(
-                            audio_path,
-                            language='tl',
-                            fp16=False,
-                            temperature=0.0,
-                            best_of=5,
-                            beam_size=5
-                        )
-                        
-                        # Use English result by default (it's more reliable)
-                        # But if both have similar confidence, prefer the one with more text
-                        en_conf = en_result.get("confidence", 1.0)
-                        tl_conf = tl_result.get("confidence", 1.0)
-                        en_text = en_result["text"].strip()
-                        tl_text = tl_result["text"].strip()
-                        
-                        # If Tagalog has significantly better confidence, use it
-                        if tl_conf > en_conf + 0.1 and len(tl_text) > 0:
-                            print("[Whisper] Detected: Tagalog")
-                            transcription_result = tl_result
-                            detected_language = 'tl'
-                        else:
-                            print("[Whisper] Detected: English")
-                            transcription_result = en_result
-                            detected_language = 'en'
                     else:
-                        # Use specified language (restrict to 'en' or 'tl')
-                        if language not in ['en', 'tl']:
-                            language = 'en'  # Default to English if invalid
-                        
-                        print(f"[Whisper] Using specified language: {language}")
                         transcription_result = self.model.transcribe(
                             audio_path,
                             language=language,
                             fp16=False,
                             temperature=0.0,
-                            best_of=5,
-                            beam_size=5
+                            beam_size=1,
+                            best_of=1
                         )
-                        detected_language = language
                     
                     text = transcription_result["text"].strip()
                     
-                    # Clean up text for Tagalog
-                    if detected_language == 'tl':
-                        text = self._improve_taglish_accuracy(text, 'tl')
-                    
                     return {
                         "text": text,
-                        "language": detected_language,
-                        "confidence": transcription_result.get("confidence", 1.0)
+                        "language": language,
+                        "confidence": 1.0
                     }
                 finally:
                     # Clean up
@@ -184,11 +136,11 @@ class WhisperSpeechRecognizer:
 
                 output_path = input_path.replace(ext, '_converted.wav')
 
-                # Use FFmpeg to convert audio to WAV format
+                # Use FFmpeg to convert audio to WAV format with lower quality for speed
                 result = subprocess.run([
                     'ffmpeg', '-y', '-i', input_path, '-acodec', 'pcm_s16le',
                     '-ar', '16000', '-ac', '1', output_path
-                ], capture_output=True, text=True, timeout=30)
+                ], capture_output=True, text=True, timeout=10)
 
                 if result.returncode == 0 and os.path.exists(output_path):
                     print(f"[FFmpeg] Successfully converted from {ext}")

@@ -1,7 +1,7 @@
 flask
 opencv-python
-mediapipe
-numpy
+mediapipe==0.10.21
+numpy==2.2.6
 pandas
 scikit-learn
 flask_sqlalchemy

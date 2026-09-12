@@ -8,28 +8,40 @@ import os
 
 # --- Configuration ---
 DATA_PATH = 'data'
-# Keep original labels and append alphabet a-z. Order must match folders in `data/`.
 SIGN_NAMES = [
-    "hello", "thanks", "yes", "no", "iloveyou",
     'a','b','c','d','e','f','g','h','i','j','k','l','m',
-    'n','o','p','r','s','t','u','v','w','x','y','z'
+    'n','o','p','q','r','s','t','u','v','w','x','y','z'
 ]
-MODEL_PATH = 'sign_classifier.p' # The file to save our trained model
+MODEL_PATH = 'sign_classifier.p'
+
+
+def normalize_landmarks(landmarks):
+    """Make landmarks position- and scale-independent.
+    Subtract wrist (landmark 0) so all points are relative to wrist.
+    Then divide by the max absolute value to normalize scale.
+    Input/output: flat array of 63 values (21 landmarks x 3 coords).
+    """
+    pts = landmarks.reshape(21, 3)
+    # Translate: wrist becomes origin
+    pts = pts - pts[0]
+    # Scale: divide by max absolute value so hand size doesn't matter
+    scale = np.max(np.abs(pts))
+    if scale > 0:
+        pts = pts / scale
+    return pts.flatten()
+
 
 # --- Load and Prepare Data ---
 labels = []
 data = []
 
 print("Loading data...")
-# Loop through each sign folder
 for sign_idx, sign_name in enumerate(SIGN_NAMES):
     sign_path = os.path.join(DATA_PATH, sign_name)
-    # Loop through each .npy file in the folder
     for npy_file in os.listdir(sign_path):
         if npy_file.endswith('.npy'):
-            # Load the landmark data
             landmarks = np.load(os.path.join(sign_path, npy_file))
-            data.append(landmarks)
+            data.append(normalize_landmarks(landmarks))
             labels.append(sign_idx)
 
 # Convert lists to numpy arrays
@@ -51,10 +63,17 @@ X_test_scaled = scaler.transform(X_test)
 # Initialize and train MLPClassifier (neural network) — better for many classes
 print("Training neural network model...")
 model = MLPClassifier(
-    hidden_layer_sizes=(256, 128, 64),  # 3 hidden layers
-    max_iter=500,
+    hidden_layer_sizes=(512, 256, 128),  # Larger network for better accuracy
+    activation='relu',
+    solver='adam',
+    alpha=0.001,  # L2 regularization to prevent overfitting
+    batch_size=64,
+    learning_rate='adaptive',
+    learning_rate_init=0.001,
+    max_iter=1000,  # More iterations
     early_stopping=True,
-    validation_fraction=0.2,
+    validation_fraction=0.15,
+    n_iter_no_change=20,  # More patience before stopping
     random_state=42,
     verbose=1
 )

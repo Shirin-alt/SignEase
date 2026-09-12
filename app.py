@@ -1,4 +1,5 @@
 from flask import Flask, render_template, Response, jsonify, redirect, url_for, flash, request, send_file, session
+from flask_socketio import SocketIO, join_room, leave_room, emit
 from flask_login import LoginManager, UserMixin, login_user, logout_user, current_user, login_required
 from flask_wtf import FlaskForm
 from wtforms import StringField, PasswordField, BooleanField, SubmitField
@@ -6,14 +7,20 @@ from wtforms.validators import DataRequired, Length, EqualTo, ValidationError
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
+from flask_cors import CORS
 from authlib.integrations.flask_client import OAuth
+from dotenv import load_dotenv
 import threading
 import subprocess
 import os
 import time
 from datetime import datetime
 import cv2
+import numpy as np
 import warnings
+
+# Load environment variables
+load_dotenv()
 
 # Suppress SQLAlchemy 2.0 deprecation warnings (LegacyAPIWarning)
 warnings.filterwarnings('ignore', category=DeprecationWarning, module='sqlalchemy')
@@ -28,8 +35,22 @@ from speech_recognizer import get_whisper_recognizer
 
 # --- Basic App Configuration ---
 app = Flask(__name__)
+allowed_origins = [origin.strip() for origin in os.environ.get(
+    'CORS_ORIGINS', 'http://localhost:3000,http://localhost:5000'
+).split(',') if origin.strip()]
+CORS(app, supports_credentials=True, origins=allowed_origins)
+socketio = SocketIO(
+    app,
+    cors_allowed_origins=allowed_origins,
+    manage_session=False,
+    async_mode='threading'
+)
 # IMPORTANT: Change this to a random secret key
 app.config['SECRET_KEY'] = 'a_very_secret_key_that_is_long_and_random'
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+app.config['SESSION_COOKIE_SECURE'] = os.environ.get('SESSION_COOKIE_SECURE', 'false').lower() == 'true'
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['SESSION_COOKIE_DOMAIN'] = os.environ.get('SESSION_COOKIE_DOMAIN') or None
 # Configuration for SQLite database
 app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', 'mysql+pymysql://root:@localhost/sign_language_db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
@@ -97,6 +118,14 @@ class LessonModule(db.Model):
     is_unlocked = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
+class ConversationRoom(db.Model):
+    __tablename__ = 'conversation_rooms'
+    id = db.Column(db.Integer, primary_key=True)
+    code = db.Column(db.String(10), unique=True, nullable=False)
+    created_by = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    is_active = db.Column(db.Boolean, default=True)
+
 @login_manager.user_loader
 def load_user(user_id):
     return db.session.get(User, int(user_id))
@@ -157,9 +186,6 @@ def get_detector():
     global detector
     with detector_lock:
         if detector is None:
-            if not camera_available:
-                print("[App] Camera not available, sign detection will not work")
-                return None
             # Detector does not depend on the database; create without passing db.
             print("[App] Initializing sign detector...")
             detector = Detector()
@@ -211,7 +237,11 @@ def video_feed():
     detector = get_detector()
     if detector is None:
         print("[App] /video_feed called but detector is None (camera unavailable)")
-        return jsonify({'error': 'Camera not available'}), 503
+        # Return a blank image instead of redirecting
+        from flask import make_response
+        response = make_response(b'', 503)
+        response.headers['Content-Type'] = 'text/plain'
+        return response
     
     response = Response(detector.generate_frames(),
                        mimetype='multipart/x-mixed-replace; boundary=frame')
@@ -221,27 +251,49 @@ def video_feed():
     response.headers['X-Accel-Buffering'] = 'no'  # Disable proxy buffering
     response.headers['Connection'] = 'keep-alive'
     response.headers['Transfer-Encoding'] = 'chunked'
+    response.headers['Access-Control-Allow-Origin'] = 'http://localhost:3000'
+    response.headers['Access-Control-Allow-Credentials'] = 'true'
     return response
 
 @app.route('/test_frame')
 @login_required
 def test_frame():
-    """Return a single JPEG frame to test camera access"""
+    """Return the latest annotated JPEG frame."""
     try:
         det = get_detector()
-        if det.frame is None:
+        if det.annotated is None:
             return jsonify({'error': 'No frame available yet'}), 503
-        
-        frame = det.frame.copy()
-        processed = det._process_frame(frame)
-        ret, buffer = cv2.imencode('.jpg', processed, [cv2.IMWRITE_JPEG_QUALITY, 70])
-        
+
+        ret, buffer = cv2.imencode('.jpg', det.annotated.copy(), [cv2.IMWRITE_JPEG_QUALITY, 75])
         if not ret:
             return jsonify({'error': 'Failed to encode frame'}), 500
-        
+
         return Response(buffer.tobytes(), mimetype='image/jpeg')
     except Exception as e:
         print(f"[App] /test_frame error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/process_frame', methods=['POST'])
+@login_required
+def process_frame():
+    """Process a frame captured by a browser camera and return its overlay."""
+    uploaded = request.files.get('frame')
+    if uploaded is None:
+        return jsonify({'error': 'No frame provided'}), 400
+
+    try:
+        frame = cv2.imdecode(np.frombuffer(uploaded.read(), np.uint8), cv2.IMREAD_COLOR)
+        if frame is None:
+            return jsonify({'error': 'Invalid image'}), 400
+
+        det = get_detector()
+        annotated = det.process_external_frame(frame)
+        ret, buffer = cv2.imencode('.jpg', annotated, [cv2.IMWRITE_JPEG_QUALITY, 75])
+        if not ret:
+            return jsonify({'error': 'Failed to encode frame'}), 500
+        return Response(buffer.tobytes(), mimetype='image/jpeg')
+    except Exception as e:
+        print(f"[App] /process_frame error: {e}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/check_detector')
@@ -264,8 +316,19 @@ def check_detector():
 @app.route('/latest')
 @login_required
 def latest():
-    # Return the most recent detection as JSON
-    return jsonify(get_detector().get_latest())
+    det = get_detector()
+    data = det.get_latest()
+    data['mode'] = det.detection_mode
+    return jsonify(data)
+
+@app.route('/set_mode', methods=['POST'])
+@login_required
+def set_mode():
+    mode = request.get_json().get('mode')
+    if mode not in ('alphabet', 'phrase'):
+        return jsonify({'error': 'Invalid mode'}), 400
+    get_detector().set_mode(mode)
+    return jsonify({'mode': mode})
 
 @app.route('/save_detection', methods=['POST'])
 @login_required
@@ -291,36 +354,57 @@ def save_detection():
     else:
         return jsonify({'status': 'error', 'message': 'No sign provided'})
 
+@app.route('/update_streak', methods=['POST'])
+@login_required
+def update_streak():
+    """Called on dashboard load to update streak based on daily activity."""
+    from datetime import datetime, timedelta
+    today = datetime.utcnow().date()
+    if current_user.last_active:
+        last_active_date = current_user.last_active.date()
+        days_diff = (today - last_active_date).days
+        if days_diff == 0:
+            pass  # Same day, keep streak
+        elif days_diff == 1:
+            current_user.streak = (current_user.streak or 0) + 1  # Consecutive day
+        else:
+            current_user.streak = 1  # Missed days, reset
+    else:
+        current_user.streak = 1  # First ever activity
+    current_user.last_active = datetime.utcnow()
+    db.session.commit()
+    return jsonify({'streak': current_user.streak})
+
+@app.route('/leaderboard')
+@login_required
+def leaderboard():
+    """Return top users by XP with current user's rank."""
+    top_users = User.query.order_by(User.xp.desc()).limit(10).all()
+    result = []
+    for u in top_users:
+        result.append({
+            'username': u.username,
+            'xp': u.xp,
+            'level': u.level,
+            'isMe': u.id == current_user.id
+        })
+    # If current user not in top 10, append them
+    if not any(u['isMe'] for u in result):
+        result.append({
+            'username': current_user.username,
+            'xp': current_user.xp,
+            'level': current_user.level,
+            'isMe': True
+        })
+    return jsonify({'leaderboard': result, 'my_streak': current_user.streak})
+
 @app.route('/sync_progress', methods=['POST'])
 @login_required
 def sync_progress():
     data = request.get_json()
     if data:
-        from datetime import datetime, timedelta
-        
         current_user.xp = data.get('xp', 0)
         current_user.level = data.get('level', 1)
-        
-        # Calculate streak
-        today = datetime.utcnow().date()
-        if current_user.last_active:
-            last_active_date = current_user.last_active.date()
-            days_diff = (today - last_active_date).days
-            
-            if days_diff == 0:
-                # Same day, keep streak
-                pass
-            elif days_diff == 1:
-                # Next day, increment streak
-                current_user.streak = data.get('streak', 0)
-            else:
-                # Missed days, reset streak
-                current_user.streak = 1
-        else:
-            # First time, start streak
-            current_user.streak = 1
-        
-        current_user.last_active = datetime.utcnow()
         db.session.commit()
         return jsonify({'status': 'synced', 'streak': current_user.streak})
     return jsonify({'status': 'error'})
@@ -406,12 +490,11 @@ def speech_recognize():
 
     audio_file = request.files['audio']
     audio_data = audio_file.read()
+    language = request.form.get('language', 'en')
 
     try:
         recognizer = get_whisper_recognizer()
-        # Use None for language to enable auto-detection (better for Taglish)
-        # Or specify 'tl' for Tagalog, 'en' for English, or None for auto-detect
-        result = recognizer.transcribe_audio(audio_data, language=None)
+        result = recognizer.transcribe_audio(audio_data, language=language)
         if 'error' in result:
             return jsonify({'error': result['error']}), 500
         return jsonify({
@@ -422,34 +505,122 @@ def speech_recognize():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+# FSL video mapping — phrase/word → video filename
+FSL_VIDEO_MAP = {
+    'hi': 'hi.mp4',
+    'hello': 'hi.mp4',
+    'thank you': 'thank_you.mp4',
+    'thanks': 'thank_you.mp4',
+    'sorry': 'sorry.mp4',
+    'good morning': 'magandang umaga.mp4',
+    'magandang umaga': 'magandang umaga.mp4',
+    'good afternoon': 'magandang hapon.mp4',
+    'magandang hapon': 'magandang hapon.mp4',
+    'good evening': 'magandang gabi.mp4',
+    'magandang gabi': 'magandang gabi.mp4',
+    'how are you': 'how_are_you.mp4',
+    "what's your name": 'whats_your_name.mp4',
+    'whats your name': 'whats_your_name.mp4',
+    'my name is': 'my_name_is.mp4',
+    'i am fine': 'i_am_fine.mp4',
+    'i am not fine': 'i_am_not_fine.mp4',
+}
+
+@app.route('/get_sign_video', methods=['POST'])
+@login_required
+def get_sign_video():
+    text = request.get_json().get('text', '').lower().strip()
+    # Remove punctuation for better matching
+    import re
+    text_clean = re.sub(r"[^\w\s']", '', text)
+
+    # Try longest match first (sort by phrase length descending)
+    matched_phrase = None
+    matched_video = None
+    for phrase in sorted(FSL_VIDEO_MAP.keys(), key=len, reverse=True):
+        if phrase in text_clean:
+            matched_phrase = phrase
+            matched_video = FSL_VIDEO_MAP[phrase]
+            break
+
+    if matched_video:
+        return jsonify({
+            'video': f'/static/videos/{matched_video}',
+            'matched': matched_phrase
+        })
+
+    # Fallback: fingerspell letter by letter using existing sign images
+    letters = [c.lower() for c in text_clean if c.isalpha()]
+    if letters:
+        fingerspell = [{'letter': l, 'image': f'/static/images/{l}.jpeg'} for l in letters]
+        return jsonify({'video': None, 'fingerspell': fingerspell, 'matched': None})
+
+    return jsonify({'video': None, 'fingerspell': [], 'matched': None})
+
 @app.route('/register', methods=['GET', 'POST'])
 def register():
-    if current_user.is_authenticated:
-        return redirect(url_for('index'))
-    form = RegistrationForm()
-    if form.validate_on_submit():
-        user = User(username=form.username.data, email=form.email.data)
-        user.set_password(form.password.data)
+    if request.method == 'POST':
+        data = request.get_json() if request.is_json else request.form
+        username = data.get('username')
+        email = data.get('email')
+        password = data.get('password')
+        
+        if User.query.filter_by(username=username).first():
+            return jsonify({'status': 'error', 'message': 'Username already exists'}), 400
+        if User.query.filter_by(email=email).first():
+            return jsonify({'status': 'error', 'message': 'Email already exists'}), 400
+        
+        user = User(username=username, email=email)
+        user.set_password(password)
         db.session.add(user)
         db.session.commit()
-        flash('Your account has been created! You are now able to log in.', 'success')
-        return redirect(url_for('login'))
-    return render_template('register.html', title='Register', form=form)
+        return jsonify({'status': 'success', 'message': 'Account created successfully'})
+    
+    if current_user.is_authenticated:
+        return redirect(url_for('index'))
+    return render_template('register.html', title='Register', form=RegistrationForm())
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
+    if request.method == 'POST':
+        # Check if request is from Vue (JSON) or direct browser access (form)
+        if request.is_json:
+            data = request.get_json()
+            username = data.get('username')
+            password = data.get('password')
+            remember = data.get('remember', False)
+            
+            user = User.query.filter_by(username=username).first()
+            if user and user.check_password(password):
+                login_user(user, remember=remember)
+                return jsonify({
+                    'status': 'success',
+                    'user': {
+                        'username': user.username,
+                        'email': user.email,
+                        'is_admin': user.is_admin,
+                        'xp': user.xp,
+                        'level': user.level,
+                        'streak': user.streak
+                    }
+                })
+            else:
+                return jsonify({'status': 'error', 'message': 'Invalid credentials'}), 401
+        else:
+            # Handle form submission (original HTML templates)
+            form = LoginForm()
+            if form.validate_on_submit():
+                user = User.query.filter_by(username=form.username.data).first()
+                if user and user.check_password(form.password.data):
+                    login_user(user, remember=form.remember.data)
+                    next_page = request.args.get('next')
+                    return redirect(next_page) if next_page else redirect(url_for('index'))
+                else:
+                    flash('Login Unsuccessful. Please check username and password', 'danger')
+    
     if current_user.is_authenticated:
         return redirect(url_for('index'))
-    form = LoginForm()
-    if form.validate_on_submit():
-        user = User.query.filter_by(username=form.username.data).first()
-        if user and user.check_password(form.password.data):
-            login_user(user, remember=form.remember.data)
-            next_page = request.args.get('next')
-            return redirect(next_page) if next_page else redirect(url_for('index'))
-        else:
-            flash('Login Unsuccessful. Please check username and password', 'danger')
-    return render_template('login.html', title='Login', form=form)
+    return render_template('login.html', title='Login', form=LoginForm())
 
 @app.route('/logout')
 def logout():
@@ -512,6 +683,11 @@ def learn():
     lesson_5 = LessonModule.query.filter_by(lesson_number=5).first()
     if lesson_5 and lesson_5.is_unlocked:
         unlocked_lessons[5] = True
+    
+    # Return JSON for API calls
+    if request.headers.get('Accept') == 'application/json' or request.path.startswith('/api/'):
+        return jsonify({'unlocked_lessons': unlocked_lessons})
+    
     return render_template('learn.html', title='Learn', unlocked_lessons=unlocked_lessons)
 
 @app.route('/profile')
@@ -569,9 +745,60 @@ def update_preference():
         flash('Your preference has been updated!', 'success')
     return redirect(url_for('profile'))
 
+@app.route('/update_username', methods=['POST'])
+@login_required
+def update_username():
+    data = request.get_json()
+    new_username = data.get('username', '').strip()
+    
+    if not new_username:
+        return jsonify({'error': 'Username cannot be empty'}), 400
+    
+    # Check if username already exists
+    existing_user = User.query.filter_by(username=new_username).first()
+    if existing_user and existing_user.id != current_user.id:
+        return jsonify({'error': 'Username already taken'}), 400
+    
+    try:
+        current_user.username = new_username
+        db.session.commit()
+        return jsonify({'message': 'Username updated successfully', 'username': new_username})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/history')
 @login_required
 def history():
+    # Return JSON for API calls
+    if request.headers.get('Accept') == 'application/json' or request.path.startswith('/api/'):
+        sign_history = DetectionHistory.query.filter(
+            DetectionHistory.user_id == current_user.id,
+            DetectionHistory.detection_type == 'sign_detection'
+        ).order_by(DetectionHistory.timestamp.desc()).all()
+
+        speech_history = DetectionHistory.query.filter(
+            DetectionHistory.user_id == current_user.id,
+            DetectionHistory.detection_type == 'speech_to_text'
+        ).order_by(DetectionHistory.timestamp.desc()).all()
+
+        return jsonify({
+            'sign_history': [{
+                'id': h.id,
+                'sign': h.sign,
+                'confidence': h.confidence,
+                'timestamp': h.timestamp.isoformat(),
+                'detection_type': h.detection_type
+            } for h in sign_history],
+            'speech_history': [{
+                'id': h.id,
+                'sign': h.sign,
+                'confidence': h.confidence,
+                'timestamp': h.timestamp.isoformat(),
+                'detection_type': h.detection_type
+            } for h in speech_history]
+        })
+    
     # Fetch both sign detection and speech-to-text history for current user
     sign_history = DetectionHistory.query.filter(
         DetectionHistory.user_id == current_user.id,
@@ -873,6 +1100,72 @@ def admin_stats():
         print(f"[App] Error fetching admin stats: {e}")
         return jsonify({'error': str(e)}), 500
 
+# --- Room Routes ---
+import random, string
+
+def generate_room_code():
+    while True:
+        code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
+        if not ConversationRoom.query.filter_by(code=code).first():
+            return code
+
+@app.route('/room/create', methods=['POST'])
+@login_required
+def create_room():
+    code = generate_room_code()
+    room = ConversationRoom(code=code, created_by=current_user.id)
+    db.session.add(room)
+    db.session.commit()
+    return jsonify({'code': code})
+
+@app.route('/room/join', methods=['POST'])
+@login_required
+def join_room_route():
+    code = request.get_json().get('code', '').strip().upper()
+    room = ConversationRoom.query.filter_by(code=code, is_active=True).first()
+    if not room:
+        return jsonify({'error': 'Room not found'}), 404
+    return jsonify({'code': room.code})
+
+@app.route('/room/<code>/messages')
+@login_required
+def get_room_messages(code):
+    return jsonify({'messages': []})
+
+# --- Socket.IO Events ---
+@socketio.on('join_room')
+def on_join(data):
+    code = data.get('room', '').strip().upper()
+    join_room(code)
+    emit('chat_message', {
+        'text': f'{current_user.username} joined the room.',
+        'type': 'system',
+        'sender': 'System',
+        'self': False
+    }, to=code)
+
+@socketio.on('leave_room')
+def on_leave(data):
+    code = data.get('room', '').strip().upper()
+    leave_room(code)
+    emit('chat_message', {
+        'text': f'{current_user.username} left the room.',
+        'type': 'system',
+        'sender': 'System',
+        'self': False
+    }, to=code)
+
+@socketio.on('chat_message')
+def on_message(data):
+    code = data.get('room', '').strip().upper()
+    emit('chat_message', {
+        'text': data.get('text', ''),
+        'type': data.get('type', 'speech'),
+        'sub': data.get('sub', ''),
+        'sender': current_user.username,
+        'self': False
+    }, to=code, include_self=False)
+
 # --- Clean up when shutting down ---
 def release_resources():
     try:
@@ -898,7 +1191,9 @@ def _open_browser_later():
         print(f"[App] Failed to open browser: {e}")
 
 if __name__ == '__main__':
-    # Schedule browser to open shortly after the server starts
     threading.Timer(1.0, _open_browser_later).start()
-    print('[App] Starting Flask server on http://127.0.0.1:5000')
-    app.run(debug=True, use_reloader=False)
+    host = os.environ.get('HOST', '0.0.0.0')
+    port = int(os.environ.get('PORT', '5000'))
+    debug = os.environ.get('FLASK_DEBUG', 'false').lower() == 'true'
+    print(f'[App] Starting Flask server on {host}:{port}')
+    socketio.run(app, host=host, port=port, debug=debug, use_reloader=False)
