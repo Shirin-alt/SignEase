@@ -1,4 +1,4 @@
-from flask import Flask, render_template, Response, jsonify, redirect, url_for, flash, request, send_file, session
+from flask import Flask, render_template, Response, jsonify, redirect, url_for, flash, request, send_file, session, send_from_directory
 from flask_socketio import SocketIO, join_room, leave_room, emit
 from flask_login import LoginManager, UserMixin, login_user, logout_user, current_user, login_required
 from flask_wtf import FlaskForm
@@ -35,6 +35,10 @@ from speech_recognizer import get_whisper_recognizer
 
 # --- Basic App Configuration ---
 app = Flask(__name__)
+
+# Vue frontend
+VUE_DIST = os.path.join(app.root_path, 'frontend', 'dist')
+
 allowed_origins = [origin.strip() for origin in os.environ.get(
     'CORS_ORIGINS', 'http://localhost:3000,http://localhost:5000'
 ).split(',') if origin.strip()]
@@ -220,10 +224,15 @@ if os.environ.get('WERKZEUG_RUN_MAIN') != 'true':
 # --- Routes ---
 @app.route('/')
 @app.route('/home')
-@login_required
 def index():
-    preference = current_user.preference if hasattr(current_user, 'preference') and current_user.preference else 'sign_detection'
-    return render_template('index.html', title='Dashboard', user_preference=preference)
+    return send_from_directory(VUE_DIST, 'index.html')
+
+
+@app.route('/assets/<path:filename>')
+def vue_assets(filename):
+    return send_from_directory(os.path.join(VUE_DIST, 'assets'), filename)
+
+
 
 @app.route('/test')
 def test():
