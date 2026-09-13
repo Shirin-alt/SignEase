@@ -5,23 +5,21 @@ __pycache__/
 .venv/
 venv/
 .env
-sign_classifier.p
 *.log
 instance/
 migrations/
-data/
 test.wav
 
-# Node/Vue
+# Node/Vue 
 node_modules/
-dist/
 
 # Temporary/debug files
 tmp.txt
 _check.py
 diagnose.py
 
-# Generated files
+# Training data and generated graphs
+data/
 graphs/
 
 # Backup files

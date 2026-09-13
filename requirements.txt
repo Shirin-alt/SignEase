@@ -1,9 +1,14 @@
 flask
+flask-socketio
+flask-cors
+python-dotenv
+
 opencv-python
 mediapipe==0.10.21
 numpy==2.2.6
 pandas
 scikit-learn
+
 flask_sqlalchemy
 flask_migrate
 flask_login
@@ -11,8 +16,12 @@ flask_wtf
 wtforms
 pymysql
 werkzeug
+
 openai-whisper
 torch
 torchaudio
+
 Authlib
 requests
+
+gunicorn
