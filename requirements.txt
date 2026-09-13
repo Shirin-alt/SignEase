@@ -15,6 +15,7 @@ flask_login
 flask_wtf
 wtforms
 pymysql
+psycopg2-binary
 werkzeug
 
 openai-whisper
