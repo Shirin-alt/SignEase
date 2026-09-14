@@ -80,9 +80,7 @@ google = oauth.register(
     client_kwargs={'scope': 'openid email profile'}
 )
 
-# database tables
-with app.app_context():
-    db.create_all()
+
 
 # --- Database Models ---
 class User(UserMixin, db.Model):
@@ -129,6 +127,12 @@ class ConversationRoom(db.Model):
     created_by = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     is_active = db.Column(db.Boolean, default=True)
+
+# Create database tables after all models are defined
+with app.app_context():
+    db.create_all()
+
+
 
 @login_manager.user_loader
 def load_user(user_id):
@@ -231,7 +235,6 @@ def index():
 @app.route('/assets/<path:filename>')
 def vue_assets(filename):
     return send_from_directory(os.path.join(VUE_DIST, 'assets'), filename)
-
 
 
 @app.route('/test')
@@ -586,8 +589,8 @@ def register():
         return jsonify({'status': 'success', 'message': 'Account created successfully'})
     
     if current_user.is_authenticated:
-        return redirect(url_for('index'))
-    return render_template('register.html', title='Register', form=RegistrationForm())
+        return redirect ('/dashboard')
+    return send_from_directory(VUE_DIST, 'index.html')
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -628,8 +631,8 @@ def login():
                     flash('Login Unsuccessful. Please check username and password', 'danger')
     
     if current_user.is_authenticated:
-        return redirect(url_for('index'))
-    return render_template('login.html', title='Login', form=LoginForm())
+        return redirect('/dashboard')
+    return send_from_directory(VUE_DIST, 'index.html')
 
 @app.route('/logout')
 def logout():
@@ -697,7 +700,7 @@ def learn():
     if request.headers.get('Accept') == 'application/json' or request.path.startswith('/api/'):
         return jsonify({'unlocked_lessons': unlocked_lessons})
     
-    return render_template('learn.html', title='Learn', unlocked_lessons=unlocked_lessons)
+    return send_from_directory(VUE_DIST, 'index.html')
 
 @app.route('/profile')
 @login_required
@@ -726,10 +729,7 @@ def profile():
 
     form = PreferenceForm()
     form.preference.data = current_user.preference or 'sign_detection'
-    return render_template('profile.html', title='Profile',
-                         total_detections=total_detections,
-                         most_common_sign=most_common_sign,
-                         form=form)
+    return send_from_directory(VUE_DIST, 'index.html')
 
 @app.route('/update_preference', methods=['POST'])
 @login_required
@@ -819,10 +819,7 @@ def history():
         DetectionHistory.detection_type == 'speech_to_text'
     ).order_by(DetectionHistory.timestamp.desc()).all()
 
-    return render_template('history.html',
-                         title='History',
-                         sign_history=sign_history,
-                         speech_history=speech_history)
+    return send_from_directory(VUE_DIST, 'index.html')
 
 @app.route('/clear_all_history/<detection_type>', methods=['DELETE'])
 @login_required
@@ -911,7 +908,7 @@ def admin():
     if not current_user.is_admin:
         flash('You do not have permission to access this page.', 'danger')
         return redirect(url_for('index'))
-    return render_template('admin.html', title='Admin Panel')
+    return send_from_directory(VUE_DIST, 'index.html')
 
  
 
