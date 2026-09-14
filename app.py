@@ -228,6 +228,7 @@ if os.environ.get('WERKZEUG_RUN_MAIN') != 'true':
 # --- Routes ---
 @app.route('/')
 @app.route('/home')
+@app.route('/dashboard')
 def index():
     return send_from_directory(VUE_DIST, 'index.html')
 
