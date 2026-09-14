@@ -200,30 +200,9 @@ def get_detector():
             print("[App] Sign detector ready!")
         return detector
 
-# Pre-initialize detector on app startup
-def initialize_detector_on_startup():
-    """Initialize detector on app startup to avoid delays on first access"""
-    try:
-        print("[App] Pre-initializing sign detector on startup...")
-        detector = get_detector()
-        if detector is None:
-            print("[App] Detector is None, camera unavailable")
-            return
-        # Give camera time to warm up
-        import time
-        time.sleep(2)
-        print("[App] Sign detector fully warmed up and ready!")
-    except Exception as e:
-        print(f"[App] Warning: Could not pre-initialize detector: {e}")
-        import traceback
-        traceback.print_exc()
-
-# Initialize after app context ONLY if not in debug reloader
-import os
-if os.environ.get('WERKZEUG_RUN_MAIN') != 'true':
-    # Main process, not debug reloader child
-    with app.app_context():
-        initialize_detector_on_startup()
+# Detector will be loaded only when sign detection is actually needed.
+# This keeps Render startup memory lower.
+print("[App] Sign detector will load on demand.")
 
 # --- Routes ---
 @app.route('/')
